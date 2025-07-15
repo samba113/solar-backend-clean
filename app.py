@@ -1,74 +1,52 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import joblib
-import gdown
 import os
+import gdown
 import re
-from pydantic import BaseModel
 
 app = FastAPI()
 
-# CORS middleware
+# Enable CORS for all domains (React frontend etc.)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Google Drive download config
-MODEL_PATH = "solar_power_model_compressed.joblib"
-DRIVE_FILE_ID = "1YTbH3EvF_O0z5ncilUSHtyhSkJdit5Rn"
+# Compressed model path and URL (Google Drive)
+MODEL_PATH = "solar_power_model_compressed_v2.joblib"
+MODEL_URL = "https://drive.google.com/uc?id=112VYQsoPWR8Wj3cT9IXN6euzrSqcayx0"
 
-# Download the model if not already present
+# Download the model only if not already downloaded
 if not os.path.exists(MODEL_PATH):
-    print("📥 Downloading model from Google Drive...")
-    url = f"https://drive.google.com/uc?id={DRIVE_FILE_ID}"
-    gdown.download(url, MODEL_PATH, quiet=False)
+    print("📥 Downloading compressed model from Google Drive...")
+    gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
 
-# Load model
+# Load the compressed model
 model = joblib.load(MODEL_PATH)
 
-# Request model
-class Query(BaseModel):
-    query: str
-
-# Input extraction logic
-def extract_features(query):
-    query = query.lower()
-    temp = re.search(r"(\d+\.?\d*)\s*(°?c|celsius|temp|temperature)", query)
-    hum = re.search(r"(\d+\.?\d*)\s*%?\s*(humidity)", query)
-    pres = re.search(r"(\d+\.?\d*)\s*(pressure|hpa)", query)
-    wind = re.search(r"(\d+\.?\d*)\s*(m/s|wind)", query)
-
-    if not (temp and hum and pres and wind):
-        return None
-
-    try:
-        temp_val = float(temp.group(1))
-        hum_val = float(hum.group(1))
-        pres_val = float(pres.group(1))
-        wind_val = float(wind.group(1))
-
-        # Optional: sanity range checks
-        if not (0 <= temp_val <= 60 and 0 <= hum_val <= 100 and 950 <= pres_val <= 1050 and 0 <= wind_val <= 30):
-            return "⚠️ Input values are out of expected range."
-
-        return [[temp_val, hum_val, pres_val, wind_val]]
-    except:
-        return None
-
-# Prediction endpoint
 @app.post("/predict")
-async def predict(data: Query):
-    query_text = data.query
-    features = extract_features(query_text)
+async def predict(request: Request):
+    data = await request.json()
+    message = data.get("message", "")
 
-    if features is None:
-        return {"error": "❌ Could not extract all 4 inputs (Temperature, Humidity, Pressure, Wind Speed)"}
-    if isinstance(features, str):
-        return {"error": features}
+    # Extract temperature, humidity, pressure, wind speed
+    pattern = r"(\d+(?:\.\d+)?)\D+(\d+(?:\.\d+)?)%\D+(\d+(?:\.\d+)?)\D+(\d+(?:\.\d+)?)"
+    match = re.search(pattern, message)
 
-    prediction = model.predict(features)[0]
-    return {"prediction": round(prediction, 2)}
+    if match:
+        temp = float(match.group(1))
+        humidity = float(match.group(2))
+        pressure = float(match.group(3))
+        wind_speed = float(match.group(4))
+
+        # Validate range
+        if not (950 <= pressure <= 1050):
+            return {"response": "⚠️ Pressure must be between 950 and 1050 hPa"}
+
+        prediction = model.predict([[temp, humidity, pressure, wind_speed]])[0]
+        return {"response": f"⚡ Predicted solar power output: {prediction:.2f} W/m²"}
+
+    return {"response": "❌ Could not extract all required values (Temp, Humidity%, Pressure, Wind Speed)"}
