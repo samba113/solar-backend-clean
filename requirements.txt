@@ -1,11 +1,7 @@
 fastapi
 uvicorn
-gdown
-joblib
-xgboost
 scikit-learn
+joblib
 pydantic
-
-
-
-
+gdown
+xgboost
