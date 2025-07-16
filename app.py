@@ -1,28 +1,24 @@
-import os
+# app.py
 import joblib
+import os
 import gdown
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 model_path = "solar_power_model.joblib"
 
-# ✅ Download model if not already present
+# Download model if not present
 if not os.path.exists(model_path):
     print("📥 Downloading model from Google Drive...")
-    gdown.download(
-        "https://drive.google.com/uc?id=112VYQsoPWR8Wj3cT9IXN6euzrSqcayx0",
-        model_path,
-        quiet=False,
-    )
+    url = "https://drive.google.com/uc?id=112VYQsoPWR8Wj3cT9IXN6euzrSqcayx0"
+    gdown.download(url, model_path, quiet=False)
 
-# ✅ Load model
 print("✅ Loading model...")
 model = joblib.load(model_path)
 
-# ✅ FastAPI setup
 app = FastAPI()
 
-# ✅ Allow all CORS for frontend connection
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,20 +28,15 @@ app.add_middleware(
 
 @app.post("/predict")
 async def predict_power(request: Request):
-    data = await request.json()
-
     try:
+        data = await request.json()
         temp = float(data.get("temperature"))
         humidity = float(data.get("humidity"))
         pressure = float(data.get("pressure"))
         wind = float(data.get("windspeed"))
 
         prediction = model.predict([[temp, humidity, pressure, wind]])
-
-        # ✅ Convert to native Python float for FastAPI
-        result = float(round(prediction[0], 2))
-
-        return {"prediction": result}
-
+        # ✅ Fix: convert np.float32 to Python float
+        return {"prediction": float(round(prediction[0], 2))}
     except Exception as e:
-        return {"error": f"❌ Failed to predict: {str(e)}"}
+        return {"error": str(e)}
