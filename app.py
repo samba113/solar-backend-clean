@@ -5,8 +5,9 @@ import gdown
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import uvicorn
 
-# === Define model path ===
+# === Model path ===
 model_path = "solar_power_model.joblib"
 
 # === Download model if not present ===
@@ -18,17 +19,17 @@ if not os.path.exists(model_path):
         quiet=False
     )
 
-# === Load the model ===
+# === Load model ===
 print("✅ Loading model...")
 model = joblib.load(model_path)
 
 # === FastAPI setup ===
 app = FastAPI()
 
-# === CORS middleware ===
+# === CORS setup ===
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # or ["http://localhost:3000"] in dev only
+    allow_origins=["*"],  # Change this to specific domain in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,7 +42,7 @@ class WeatherData(BaseModel):
     pressure: float
     windspeed: float
 
-# === Prediction endpoint ===
+# === Prediction route ===
 @app.post("/predict")
 async def predict_power(data: WeatherData):
     try:
@@ -49,3 +50,8 @@ async def predict_power(data: WeatherData):
         return {"prediction": round(prediction[0], 2)}
     except Exception as e:
         return {"error": str(e)}
+
+# === Run server (locally or on Render) ===
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))  # Render injects PORT
+    uvicorn.run("app:app", host="0.0.0.0", port=port)
