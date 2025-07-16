@@ -1,35 +1,51 @@
 # app.py
-import joblib
 import os
+import joblib
 import gdown
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
+# === Define model path ===
 model_path = "solar_power_model.joblib"
 
-# Download model if not present
+# === Download model if not present ===
 if not os.path.exists(model_path):
-    url = "https://drive.google.com/uc?id=112VYQsoPWR8Wj3cT9IXN6euzrSqcayx0"  # your full model
-    gdown.download(url, model_path, quiet=False)
+    print("📥 Downloading model from Google Drive...")
+    gdown.download(
+        "https://drive.google.com/uc?id=112VYQsoPWR8Wj3cT9IXN6euzrSqcayx0",
+        model_path,
+        quiet=False
+    )
 
+# === Load the model ===
+print("✅ Loading model...")
 model = joblib.load(model_path)
 
+# === FastAPI setup ===
 app = FastAPI()
 
+# === CORS middleware ===
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # or ["http://localhost:3000"] in dev only
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.post("/predict")
-async def predict_power(request: Request):
-    data = await request.json()
-    temp = float(data.get("temperature"))
-    humidity = float(data.get("humidity"))
-    pressure = float(data.get("pressure"))
-    wind = float(data.get("windspeed"))
+# === Request schema ===
+class WeatherData(BaseModel):
+    temperature: float
+    humidity: float
+    pressure: float
+    windspeed: float
 
-    prediction = model.predict([[temp, humidity, pressure, wind]])
-    return {"prediction": round(prediction[0], 2)}
+# === Prediction endpoint ===
+@app.post("/predict")
+async def predict_power(data: WeatherData):
+    try:
+        prediction = model.predict([[data.temperature, data.humidity, data.pressure, data.windspeed]])
+        return {"prediction": round(prediction[0], 2)}
+    except Exception as e:
+        return {"error": str(e)}
